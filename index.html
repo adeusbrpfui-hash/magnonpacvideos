@@ -158,9 +158,9 @@ body{background:var(--cinza);color:var(--texto);font-family:'Poppins',sans-serif
 <div id="telaCaptcha">
   <div class="captcha-box">
     <div class="captcha-logo">🎬 MagnonPacVideos</div>
-    <div class="captcha-sub">Confirme que você é humano para continuar</div>
-    <div class="captcha-calc" id="calcDisplay">? + ?</div>
-    <input class="captcha-inp" type="number" id="captchaInp" placeholder="Resposta">
+    <div class="captcha-sub">Digite o código abaixo para continuar</div>
+    <div class="captcha-calc" id="calcDisplay">------</div>
+    <input class="captcha-inp" type="text" id="captchaInp" placeholder="Digite o código acima" maxlength="6" autocomplete="off" style="text-transform:uppercase">
     <button class="captcha-btn" onclick="verificarCaptcha()">Continuar →</button>
     <div class="captcha-err" id="captchaErr"></div>
   </div>
@@ -294,4 +294,4 @@ let userLogado=null;
 let captchaResp=null;
 let todosVideos=[];
 
-function fmt(n){if(n>=1000000)return(n/1000000).toFixed(1)+'M';if(n>=1000)r
+f
