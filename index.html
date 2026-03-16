@@ -294,4 +294,286 @@ let userLogado=null;
 let captchaResp=null;
 let todosVideos=[];
 
-f
+function fmt(n){if(n>=1000000)return(n/1000000).toFixed(1)+'M';if(n>=1000)return(n/1000).toFixed(1)+'K';return n||0}
+function ago(d){if(!d)return'';const s=Math.floor((Date.now()-new Date(d))/1000);if(s<60)return'agora';if(s<3600)return Math.floor(s/60)+'min';if(s<86400)return Math.floor(s/3600)+'h';if(s<2592000)return Math.floor(s/86400)+'d';return Math.floor(s/2592000)+'m'}
+function dataFull(d){if(!d)return'';return new Date(d).toLocaleDateString('pt-BR')}
+function av(foto,username){return foto||`https://ui-avatars.com/api/?name=${encodeURIComponent(username||'U')}&background=1db954&color=fff&size=64`}
+
+function salvarSessao(user){localStorage.setItem('mpv_user',JSON.stringify(user))}
+function carregarSessao(){try{const u=localStorage.getItem('mpv_user');return u?JSON.parse(u):null;}catch(e){return null;}}
+function limparSessao(){localStorage.removeItem('mpv_user')}
+
+// CAPTCHA - CÓDIGO ALEATÓRIO (sem depender do backend)
+function gerarCodigo(){
+  const chars='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let code='';
+  for(let i=0;i<6;i++) code+=chars[Math.floor(Math.random()*chars.length)];
+  return code;
+}
+
+function carregarCaptcha(){
+  captchaResp=gerarCodigo();
+  document.getElementById('calcDisplay').textContent=captchaResp;
+  document.getElementById('captchaInp').value='';
+  document.getElementById('captchaErr').textContent='';
+}
+
+function verificarCaptcha(){
+  const val=document.getElementById('captchaInp').value.trim().toUpperCase();
+  if(val===captchaResp){
+    document.getElementById('telaCaptcha').classList.add('hidden');
+    const sessao=carregarSessao();
+    if(sessao){userLogado=sessao;iniciar();return;}
+    document.getElementById('telaLogin').classList.remove('hidden');
+  }else{
+    document.getElementById('captchaErr').textContent='Código incorreto! Tente novamente.';
+    carregarCaptcha();
+  }
+}
+
+async function entrar(){
+  const u=document.getElementById('inputUser').value.trim();
+  const s=document.getElementById('inputSenha').value.trim();
+  if(!u||!s)return;
+  const r=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u,senha:s})});
+  const d=await r.json();
+  if(d.erro){document.getElementById('erroLogin').textContent=d.erro;return;}
+  userLogado=d.usuario;salvarSessao(userLogado);iniciar();
+}
+
+function mostrarCadastro(){
+  const u=prompt('Escolha seu @username:');if(!u)return;
+  const s=prompt('Senha de 4 dígitos:');if(!s||s.length!==4){alert('Senha deve ter 4 dígitos!');return;}
+  cadastrar(u,s);
+}
+
+async function cadastrar(u,s){
+  const r=await fetch('/api/cadastro',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u,senha:s})});
+  const d=await r.json();
+  if(d.erro){alert(d.erro);return;}
+  userLogado=d.usuario;salvarSessao(userLogado);iniciar();
+}
+
+function iniciar(){
+  document.getElementById('telaLogin').classList.add('hidden');
+  document.getElementById('header').classList.remove('hidden');
+  document.getElementById('navbar').classList.remove('hidden');
+  atualizarAv();irTela('telaLongos');
+}
+
+function irTela(id){
+  document.querySelectorAll('.tela').forEach(t=>t.classList.remove('ativa'));
+  document.getElementById(id).classList.add('ativa');
+  document.querySelectorAll('.nb').forEach(b=>b.classList.remove('ativo'));
+  const m={telaLongos:'btnLongos',telaShorts:'btnShorts',telaUpload:'btnUpload',telaPerfil:'btnPerfil'};
+  if(m[id])document.getElementById(m[id]).classList.add('ativo');
+  if(id==='telaLongos')carregarLongos();
+  if(id==='telaShorts')carregarShorts();
+  if(id==='telaPerfil')carregarPerfil();
+}
+
+function atualizarAv(){document.getElementById('headerFoto').src=av(userLogado.foto,userLogado.username)}
+
+function abrirBusca(){document.getElementById('modalBusca').classList.remove('hidden');document.getElementById('buscaInp').focus()}
+function fecharBusca(){document.getElementById('modalBusca').classList.add('hidden')}
+
+let buscaTimer;
+function buscarVideos(q){
+  clearTimeout(buscaTimer);
+  const el=document.getElementById('buscaResultados');
+  if(!q){el.innerHTML='<div class="busca-vazio">Digite para buscar vídeos 🎬</div>';return;}
+  buscaTimer=setTimeout(()=>{
+    const res=todosVideos.filter(v=>(v.titulo||'').toLowerCase().includes(q.toLowerCase())||(v.descricao||'').toLowerCase().includes(q.toLowerCase())||(v.username||'').toLowerCase().includes(q.toLowerCase()));
+    if(!res.length){el.innerHTML='<div class="busca-vazio">Nenhum vídeo encontrado 😔</div>';return;}
+    el.innerHTML=res.map(v=>`<div class="busca-item" onclick="fecharBusca();irTela('${v.tipo==='short'?'telaShorts':'telaLongos'}')"><img class="busca-thumb" src="${v.capa||v.arquivo}" onerror="this.style.background='var(--cinza2)'"><div class="busca-info"><div class="busca-titulo">${v.titulo||'Sem título'}</div><div class="busca-meta">@${v.username} • ${ago(v.data)} • ${fmt(v.views||0)} views</div></div></div>`).join('');
+  },300);
+}
+
+function abrirEmoji(){document.getElementById('modalEmoji').classList.remove('hidden');document.getElementById('emojiInp').focus()}
+function fecharEmoji(){document.getElementById('modalEmoji').classList.add('hidden')}
+
+let emojiTimer;
+function buscarEmojis(q){
+  clearTimeout(emojiTimer);
+  const el=document.getElementById('emojiGrid');
+  if(!q){el.innerHTML='<div style="grid-column:1/-1;text-align:center;color:var(--texto2);padding:30px;font-size:14px">Digite para buscar stickers 🔖</div>';return;}
+  el.innerHTML='<div style="grid-column:1/-1;text-align:center;color:var(--texto2);padding:30px;font-size:14px">Buscando...</div>';
+  emojiTimer=setTimeout(async()=>{
+    try{
+      const r=await fetch(`https://emoji.gg/api/?search=${encodeURIComponent(q)}`);
+      const d=await r.json();
+      if(!d.length){el.innerHTML='<div style="grid-column:1/-1;text-align:center;color:var(--texto2);padding:30px;font-size:14px">Nenhum resultado 😔</div>';return;}
+      el.innerHTML=d.slice(0,20).map(e=>`<div class="emoji-item"><img src="${e.image}" loading="lazy"><a class="emoji-dl" href="${e.image}" download="${e.title}.png" target="_blank">⬇️ Baixar</a></div>`).join('');
+    }catch{el.innerHTML='<div style="grid-column:1/-1;text-align:center;color:var(--texto2);padding:30px;font-size:14px">Erro ao buscar 😔</div>';}
+  },400);
+}
+
+async function carregarLongos(){
+  const r=await fetch('/api/videos');
+  todosVideos=await r.json();
+  const lista=todosVideos.filter(v=>v.tipo!=='short');
+  const el=document.getElementById('listaLongos');
+  if(!lista.length){el.innerHTML='<div class="vazio"><div class="vazio-ico">🎬</div><div class="vazio-titulo">Nenhum vídeo ainda</div><div class="vazio-sub">Seja o primeiro a publicar!</div></div>';return;}
+  el.innerHTML=lista.map(v=>renderVideo(v)).join('');
+}
+
+async function carregarShorts(){
+  const r=await fetch('/api/videos');
+  todosVideos=await r.json();
+  const lista=todosVideos.filter(v=>v.tipo==='short');
+  const el=document.getElementById('listaShorts');
+  if(!lista.length){el.innerHTML='<div class="vazio"><div class="vazio-ico">⚡</div><div class="vazio-titulo">Nenhum short ainda</div><div class="vazio-sub">Seja o primeiro a publicar!</div></div>';return;}
+  el.innerHTML=lista.map(v=>renderShort(v)).join('');
+}
+
+function renderVideo(v){
+  const liked=(v.likes||[]).includes(userLogado.username);
+  const naoEu=v.username!==userLogado.username;
+  const jaSigo=(userLogado.seguindo||[]).includes(v.username);
+  const vcheck=v.verificado?`<img src="${VCHECK}" class="yt-vcheck">`:'';
+  const coms=(v.comentarios||[]).map(c=>renderCom(c)).join('');
+  return`<div class="yt-card">
+    <div class="yt-thumb-wrap" id="wrap-${v.id}" onclick="playVideo('ytp-${v.id}',this)">
+      ${v.capa?`<img class="yt-thumb" src="${v.capa}">`:`<div class="yt-no-thumb">🎬</div>`}
+      <div class="yt-play"><svg viewBox="0 0 24 24" fill="white"><path d="M8 5v14l11-7z"/></svg></div>
+      <div class="yt-views">👁 ${fmt(v.views||0)}</div>
+    </div>
+    <video class="yt-player" id="ytp-${v.id}" src="${v.arquivo}" controls></video>
+    <div class="yt-info">
+      <div class="yt-titulo">${v.titulo||'Sem título'}</div>
+      <div class="yt-meta">
+        <img class="yt-av" src="${av(v.foto,v.username)}">
+        <div class="yt-info2">
+          <div class="yt-uname">@${v.username}${vcheck}${naoEu?`<button class="bseg ${jaSigo?'sim':''}" style="margin-left:4px" onclick="seguir('${v.username}',this)"><img src="${FOLLOW}"></button>`:''}</div>
+          <div class="yt-data">${ago(v.data)}</div>
+        </div>
+      </div>
+    </div>
+    <div class="yt-actions">
+      <button class="btn-act${liked?' liked':''}" onclick="darLike('${v.id}',this)"><img src="${LIKE}"><span class="lc">${fmt((v.likes||[]).length)}</span></button>
+      <button class="btn-act" onclick="togComs('${v.id}')">💬 ${(v.comentarios||[]).length}</button>
+    </div>
+    <div class="coms-box" id="cb-${v.id}">
+      <div class="coms-lista" id="cl-${v.id}">${coms}</div>
+      <div class="com-row"><input class="com-inp" id="ci-${v.id}" placeholder="Comentar..."><button class="com-send" onclick="envCom('${v.id}')">→</button></div>
+    </div>
+  </div>`;
+}
+
+function renderShort(v){
+  const liked=(v.likes||[]).includes(userLogado.username);
+  const naoEu=v.username!==userLogado.username;
+  const jaSigo=(userLogado.seguindo||[]).includes(v.username);
+  const vcheck=v.verificado?`<img src="${VCHECK}" style="width:14px">`:'';
+  const coms=(v.comentarios||[]).map(c=>renderCom(c)).join('');
+  return`<div class="short-card">
+    <video class="short-video" src="${v.arquivo}" controls playsinline></video>
+    <div class="short-info">
+      <div class="short-uname"><img style="width:26px;height:26px;border-radius:50%;object-fit:cover" src="${av('',v.username)}">@${v.username}${vcheck}${naoEu?`<button class="bseg ${jaSigo?'sim':''}" style="margin-left:auto" onclick="seguir('${v.username}',this)"><img src="${FOLLOW}"></button>`:''}</div>
+      ${v.descricao?`<div class="short-desc">${v.descricao}</div>`:''}
+    </div>
+    <div class="short-actions">
+      <button class="btn-act${liked?' liked':''}" onclick="darLike('${v.id}',this)"><img src="${LIKE}"><span class="lc">${fmt((v.likes||[]).length)}</span></button>
+      <button class="btn-act" onclick="togComs('s${v.id}')">💬 ${(v.comentarios||[]).length}</button>
+    </div>
+    <div class="coms-box" id="cb-s${v.id}">
+      <div class="coms-lista" id="cl-s${v.id}">${coms}</div>
+      <div class="com-row"><input class="com-inp" id="ci-s${v.id}" placeholder="Comentar..."><button class="com-send" onclick="envCom('${v.id}')">→</button></div>
+    </div>
+  </div>`;
+}
+
+function renderCom(c){
+  return`<div class="com-item"><img class="com-av" src="${av(c.foto,c.username)}"><div class="com-bubble"><div class="com-user">@${c.username}${c.verificado?`<img src="${VCHECK}" style="width:12px">`:''}</div><div class="com-txt">${c.texto}</div></div></div>`;
+}
+
+function playVideo(id,wrap){
+  const player=document.getElementById(id);
+  wrap.style.display='none';player.style.display='block';player.play();
+  fetch('/api/view',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({videoId:id.replace('ytp-','')})});
+}
+
+function togComs(id){
+  const el=document.getElementById('cb-'+id);
+  el.style.display=el.style.display==='block'?'none':'block';
+}
+
+async function darLike(id,btn){
+  const r=await fetch('/api/like',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({videoId:id,username:userLogado.username})});
+  const d=await r.json();
+  btn.classList.toggle('liked',d.liked);
+  btn.querySelector('.lc').textContent=fmt(d.likes);
+}
+
+async function seguir(alvo,btn){
+  const r=await fetch('/api/seguir',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:userLogado.username,alvo})});
+  const d=await r.json();
+  if(d.sucesso){
+    if(d.seguindo){btn.className='bseg sim';if(!userLogado.seguindo)userLogado.seguindo=[];userLogado.seguindo.push(alvo);salvarSessao(userLogado);}
+    else{btn.className='bseg';userLogado.seguindo=userLogado.seguindo.filter(x=>x!==alvo);salvarSessao(userLogado);}
+  }
+}
+
+async function envCom(id){
+  const inp=document.getElementById('ci-'+id);
+  if(!inp)return;
+  const txt=inp.value.trim();if(!txt)return;
+  const realId=id.startsWith('s')?id.slice(1):id;
+  const r=await fetch('/api/comentario',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({videoId:realId,username:userLogado.username,texto:txt})});
+  const d=await r.json();
+  if(d.sucesso){
+    const lista=document.getElementById('cl-'+id);
+    lista.innerHTML+=renderCom(d.comentario);
+    lista.scrollTop=lista.scrollHeight;inp.value='';
+  }
+}
+
+async function publicarVideo(){
+  const file=document.getElementById('uv').files[0];
+  const capa=document.getElementById('uc').files[0];
+  const titulo=document.getElementById('tituloVideo').value;
+  const desc=document.getElementById('descVideo').value;
+  const tipo=document.querySelector('input[name="tipo"]:checked').value;
+  if(!file){alert('Selecione um vídeo!');return;}
+  if(!titulo){alert('Adicione um título!');return;}
+  alert('Enviando... aguarde!');
+  const fd=new FormData();
+  fd.append('arquivo',file);fd.append('username',userLogado.username);
+  fd.append('titulo',titulo);fd.append('descricao',desc||'');fd.append('tipo',tipo);
+  if(capa)fd.append('capa',capa);
+  try{
+    const r=await fetch('/api/video',{method:'POST',body:fd});
+    const d=await r.json();
+    if(d.sucesso){alert('✅ Vídeo publicado!');irTela(tipo==='short'?'telaShorts':'telaLongos');}
+    else alert('Erro: '+JSON.stringify(d));
+  }catch(e){alert('Erro: '+e.message);}
+}
+
+async function carregarPerfil(){
+  const videos=await(await fetch('/api/videos')).json();
+  const meus=videos.filter(v=>v.username===userLogado.username);
+  document.getElementById('pAv').src=av(userLogado.foto,userLogado.username);
+  if(userLogado.verificado)document.getElementById('pBadge').classList.remove('hidden');
+  document.getElementById('pNome').textContent='@'+userLogado.username;
+  document.getElementById('pBio').textContent=userLogado.bio||'';
+  document.getElementById('pCriado').textContent='📅 Membro desde '+dataFull(userLogado.criado);
+  document.getElementById('pVideos').textContent=meus.length;
+  const segs=userLogado.seguidores;
+  document.getElementById('pSegs').textContent=fmt(typeof segs==='number'?segs:(segs||[]).length);
+  document.getElementById('pSeg').textContent=(userLogado.seguindo||[]).length;
+  document.getElementById('pGrid').innerHTML=meus.map(v=>`<img class="p-thumb" src="${v.capa||v.arquivo}" onerror="this.style.background='var(--cinza2)'">`).join('');
+}
+
+async function trocarFoto(input){
+  const file=input.files[0];if(!file)return;
+  const fd=new FormData();
+  fd.append('perfil',file);fd.append('username',userLogado.username);
+  const r=await fetch('/api/perfil/foto',{method:'POST',body:fd});
+  const d=await r.json();
+  userLogado.foto=d.foto;salvarSessao(userLogado);atualizarAv();carregarPerfil();
+}
+
+window.addEventListener('DOMContentLoaded', function(){ carregarCaptcha(); });
+</script>
+</body>
+</html>
