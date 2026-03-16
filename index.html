@@ -326,16 +326,17 @@ function carregarSessao(){
 function limparSessao(){localStorage.removeItem('mpv_user')}
 
 // CAPTCHA
+let captchaResp=null;
 async function carregarCaptcha(){
   const r=await fetch('/api/captcha');
   const d=await r.json();
   document.getElementById('calcDisplay').textContent=d.pergunta+' = ?';
-  captchaResp=d.resposta;
+  captchaResp=Number(d.resposta);
 }
 
 function verificarCaptcha(){
-  const val=document.getElementById('captchaInp').value.trim();
-  if(val===captchaResp){
+  const val=Number(document.getElementById('captchaInp').value.trim());
+  if(!isNaN(val)&&val===captchaResp){
     document.getElementById('telaCaptcha').classList.add('hidden');
     // Verifica sessao salva
     const sessao=carregarSessao();
